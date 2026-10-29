@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add this to make the background transitions smooth across the whole app */
+@layer base {
+  body {
+    @apply transition-colors duration-300;
+  }
+}
