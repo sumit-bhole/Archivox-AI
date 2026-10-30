@@ -64,7 +64,6 @@ export default function Footer() {
               >
                 Capabilities
               </button>
-              // Find the "Sign in" button in your Footer.jsx and update its onClick:
   <button
     onClick={() => navigate('/auth?mode=signin')}
     className="inline-flex items-center gap-1 transition hover:text-indigo-600 dark:hover:text-indigo-300"

@@ -1,168 +1,255 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
-import { CheckCircle2, Loader2, Target, Calendar, DollarSign, Briefcase, Mail, Building } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Loader2, Mic, MicOff, PhoneOff, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BolnaWebCall } from "@bolna/web-call";
 
 export default function ClientIntake() {
   const { slug } = useParams();
-  const [agency, setAgency] = useState(null);
+  const [workspace, setWorkspace] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
   
+  // 'welcome' -> 'form' -> 'call' -> 'success'
+  const [phase, setPhase] = useState('welcome');
+
   const [formData, setFormData] = useState({
-    client_name: '',
-    client_email: '',
-    company_name: '',
-    project_summary: '',
-    core_features: '',
-    budget: '',
-    timeline: ''
+    fullName: '', email: '', phone: '', businessName: '', businessType: '', shortDesc: '', consent: false
   });
 
+  const [bolnaAgent, setBolnaAgent] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [callStatus, setCallStatus] = useState('connecting');
+  const [runId, setRunId] = useState(null);
+
   useEffect(() => {
-    const fetchAgency = async () => {
-      const { data } = await supabase.from('agencies').select('*');
+    document.documentElement.classList.add('dark'); // Force strict monochrome
+    const fetchWorkspace = async () => {
+      const { data } = await supabase.from('workspaces').select('*');
       if (data) {
-        const matchedAgency = data.find(a => 
-          a.company_name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug
-        );
-        if (matchedAgency) setAgency(matchedAgency);
+        const matchedWs = data.find(w => w.url_slug === slug || w.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
+        if (matchedWs) setWorkspace(matchedWs);
       }
       setLoading(false);
     };
-    fetchAgency();
+    fetchWorkspace();
   }, [slug]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
+  const startCall = async () => {
     try {
+      setCallStatus('connecting');
+      setPhase('call');
+      setRunId(null);
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-      const response = await fetch(`${API_BASE_URL}/api/leads/submit`, {
+      const agentId = import.meta.env.VITE_DEFAULT_BOLNA_AGENT_ID;
+
+      const authResponse = await fetch(`${API_BASE_URL}/api/bolna/create-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agency_id: agency.id,
-          ...formData
+          agent_id: agentId,
+          client_name: formData.fullName,
+          business_name: formData.businessName,
+          business_type: formData.businessType,
+          short_desc: formData.shortDesc
         })
       });
-      if (!response.ok) throw new Error("Submission failed");
-      setSuccess(true);
-    } catch (error) {
-      alert("Error: " + error.message);
-    } finally {
-      setSubmitting(false);
+
+      if (!authResponse.ok) throw new Error("Connection failed.");
+      const sessionData = await authResponse.json();
+
+      const agent = new BolnaWebCall({ session: sessionData });
+
+      agent.on('call-start', () => {
+        setCallStatus('active');
+        setRunId(agent.getRunId());
+      });
+
+      agent.on('call-end', () => {
+        setCallStatus('ended');
+        submitToBackend(agent.getRunId());
+      });
+
+      await agent.start();
+      setBolnaAgent(agent);
+
+    } catch (err) {
+      console.error(err);
+      alert("Error starting voice connection. Please allow microphone access.");
+      setPhase('form');
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" size={32}/></div>;
-  if (!agency) return <div className="min-h-screen flex items-center justify-center text-xl font-bold">404 - Workspace Not Found</div>;
+  const endCall = async () => {
+    if (bolnaAgent) await bolnaAgent.stop(); 
+    setCallStatus('ended');
+    submitToBackend(runId);
+  };
 
-  const brandColor = agency.brand_color || '#4F46E5';
+  const submitToBackend = async (executionId) => {
+    try {
+      setPhase('success'); // Show immediate feedback while processing background
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      await fetch(`${API_BASE_URL}/api/leads/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agency_id: workspace.id,
+          client_name: formData.fullName,
+          client_email: formData.email,
+          company_name: formData.businessName,
+          project_summary: formData.shortDesc || `${formData.businessType} requiring custom software.`,
+          core_features: "Extracted via AI.",
+          bolna_execution_id: executionId
+        })
+      });
+    } catch (error) {
+      console.error("Submission error:", error);
+    }
+  };
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="max-w-md w-full bg-white dark:bg-slate-900 p-10 rounded-3xl shadow-2xl text-center border border-slate-100 dark:border-slate-800">
-          <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: `${brandColor}20`, color: brandColor }}>
-            <CheckCircle2 size={48} />
-          </div>
-          <h2 className="text-3xl font-bold mb-4">Request Received</h2>
-          <p className="text-slate-500">The engineering team at <strong>{agency.company_name}</strong> is reviewing your requirements and generating a technical blueprint.</p>
-        </motion.div>
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#000000]"><Loader2 className="animate-spin text-zinc-500" size={32}/></div>;
+  if (!workspace) return <div className="min-h-screen flex items-center justify-center text-sm font-medium bg-[#000000] text-zinc-400">404 - Discovery Portal Not Found</div>;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-white dark:bg-slate-950 selection:bg-slate-200 dark:selection:bg-slate-800">
+    <div className="min-h-screen bg-[#000000] text-white font-sans flex flex-col items-center justify-center p-4 selection:bg-zinc-800">
       
-      {/* Left Side: Agency Branding (Dynamic Color) */}
-      <div className="md:w-5/12 p-12 md:p-20 flex flex-col justify-between text-white relative overflow-hidden" style={{ backgroundColor: brandColor }}>
-        <div className="absolute inset-0 bg-gradient-to-br from-black/20 to-transparent mix-blend-overlay"></div>
-        <div className="relative z-10">
-          <h2 className="text-3xl font-black mb-12 tracking-tight">{agency.company_name}</h2>
-          <h1 className="text-4xl md:text-6xl font-extrabold leading-[1.1] mb-6">
-            Project <br/>Discovery
-          </h1>
-          <p className="text-lg md:text-xl font-medium text-white/80 max-w-sm">
-            {agency.welcome_message || "Let's build something amazing together. Share your vision, and we'll architect the solution."}
-          </p>
-        </div>
-        <div className="relative z-10 mt-12 pt-12 border-t border-white/20 text-sm font-medium text-white/70">
-          Secure Intake Portal powered by Archivox
-        </div>
+      {/* Top Left Branding */}
+      <div className="absolute top-6 left-6 text-sm font-semibold tracking-tight text-white flex items-center gap-2">
+        <div className="w-2 h-2 bg-white rounded-full"></div> {workspace.name}
       </div>
 
-      {/* Right Side: Detailed Intake Form */}
-      <div className="md:w-7/12 p-8 md:p-20 overflow-y-auto bg-slate-50 dark:bg-slate-950">
-        <form onSubmit={handleSubmit} className="max-w-xl mx-auto space-y-8">
-          
-          {/* Section 1: Client Details */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold border-b border-slate-200 dark:border-slate-800 pb-2">1. Your Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 flex items-center gap-2"><Briefcase size={16}/> Full Name</label>
-                <input type="text" required value={formData.client_name} onChange={e => setFormData({...formData, client_name: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none transition-all" style={{ focusBorderColor: brandColor }} placeholder="Jane Doe" />
+      <AnimatePresence mode="wait">
+        
+        {/* PHASE 1: WELCOME SCREEN */}
+        {phase === 'welcome' && (
+          <motion.div key="welcome" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="max-w-md w-full text-center">
+            <h1 className="text-3xl font-semibold mb-3 tracking-tight">Let's understand your business.</h1>
+            <p className="text-zinc-400 text-sm mb-8 leading-relaxed">Instead of filling out long technical forms, have a simple 5-10 minute conversation with our AI consultant about what your business needs.</p>
+            
+            <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 text-left space-y-4 mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                <p className="text-sm text-zinc-300">Speak naturally in your own words.</p>
               </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 flex items-center gap-2"><Building size={16}/> Company</label>
-                <input type="text" value={formData.company_name} onChange={e => setFormData({...formData, company_name: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none transition-all" placeholder="Acme Corp" />
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                <p className="text-sm text-zinc-300">Focus on business goals, not technical details.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                <p className="text-sm text-zinc-300">We automatically draft your project blueprint.</p>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2 flex items-center gap-2"><Mail size={16}/> Work Email</label>
-              <input type="email" required value={formData.client_email} onChange={e => setFormData({...formData, client_email: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none transition-all" placeholder="jane@acme.com" />
-            </div>
-          </div>
 
-          {/* Section 2: Project Scope */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold border-b border-slate-200 dark:border-slate-800 pb-2">2. Project Scope</h3>
-            <div>
-              <label className="block text-sm font-semibold mb-2 flex items-center gap-2"><Target size={16}/> Project Goal</label>
-              <textarea required rows="3" value={formData.project_summary} onChange={e => setFormData({...formData, project_summary: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none resize-none transition-all" placeholder="What is the main problem this software solves?" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Key Features Needed</label>
-              <textarea required rows="4" value={formData.core_features} onChange={e => setFormData({...formData, core_features: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none resize-none transition-all" placeholder="List the non-negotiable features..." />
-            </div>
-          </div>
+            <button onClick={() => setPhase('form')} className="w-full bg-white text-black font-medium py-3.5 rounded-xl hover:bg-zinc-200 transition-colors">
+              Start Discovery
+            </button>
+          </motion.div>
+        )}
 
-          {/* Section 3: Logistics */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold border-b border-slate-200 dark:border-slate-800 pb-2">3. Logistics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 flex items-center gap-2"><DollarSign size={16}/> Estimated Budget</label>
-                <select value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none appearance-none">
-                  <option value="">Select range...</option>
-                  <option>&lt; $10k</option>
-                  <option>$10k - $25k</option>
-                  <option>$25k - $50k</option>
-                  <option>$50k+</option>
-                </select>
+        {/* PHASE 2: CLIENT DETAILS FORM */}
+        {phase === 'form' && (
+          <motion.div key="form" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="max-w-md w-full">
+            <h2 className="text-2xl font-semibold mb-6 tracking-tight">Just a few details</h2>
+            <form onSubmit={(e) => { e.preventDefault(); startCall(); }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Full Name</label>
+                  <input type="text" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full p-3 bg-[#0A0A0A] border border-zinc-800 rounded-xl outline-none focus:border-zinc-500 text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Email</label>
+                  <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 bg-[#0A0A0A] border border-zinc-800 rounded-xl outline-none focus:border-zinc-500 text-sm" required />
+                </div>
               </div>
+              
               <div>
-                <label className="block text-sm font-semibold mb-2 flex items-center gap-2"><Calendar size={16}/> Target Timeline</label>
-                <select value={formData.timeline} onChange={e => setFormData({...formData, timeline: e.target.value})} className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none appearance-none">
-                  <option value="">Select timeline...</option>
-                  <option>ASAP (1-2 months)</option>
-                  <option>3-4 months</option>
-                  <option>Flexible (6+ months)</option>
-                </select>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Phone Number</label>
+                <input type="tel" placeholder="+1 (555) 000-0000" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-3 bg-[#0A0A0A] border border-zinc-800 rounded-xl outline-none focus:border-zinc-500 text-sm" required />
               </div>
-            </div>
-          </div>
 
-          <button type="submit" disabled={submitting} className="w-full py-5 text-white font-bold rounded-xl transition-all shadow-lg hover:-translate-y-1 disabled:opacity-70 disabled:hover:translate-y-0 flex justify-center items-center gap-2" style={{ backgroundColor: brandColor }}>
-            {submitting ? <Loader2 className="animate-spin" size={20}/> : 'Submit Requirements for Review'}
-          </button>
-        </form>
-      </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Business Name</label>
+                  <input type="text" value={formData.businessName} onChange={e => setFormData({...formData, businessName: e.target.value})} className="w-full p-3 bg-[#0A0A0A] border border-zinc-800 rounded-xl outline-none focus:border-zinc-500 text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Business Type</label>
+                  <select value={formData.businessType} onChange={e => setFormData({...formData, businessType: e.target.value})} className="w-full p-3 bg-[#0A0A0A] border border-zinc-800 rounded-xl outline-none focus:border-zinc-500 text-sm appearance-none" required>
+                    <option value="" disabled>Select Type...</option>
+                    <option value="E-commerce">E-commerce / Retail</option>
+                    <option value="Restaurant">Restaurant / Food</option>
+                    <option value="Service">Service / Consulting</option>
+                    <option value="Tech">Technology / Startup</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">What do you want to build? (Short summary)</label>
+                <textarea rows="2" value={formData.shortDesc} onChange={e => setFormData({...formData, shortDesc: e.target.value})} className="w-full p-3 bg-[#0A0A0A] border border-zinc-800 rounded-xl outline-none focus:border-zinc-500 text-sm resize-none" required></textarea>
+              </div>
+
+              <div className="flex items-start gap-3 mt-4 mb-2">
+                <input type="checkbox" id="consent" checked={formData.consent} onChange={e => setFormData({...formData, consent: e.target.checked})} className="mt-1" required />
+                <label htmlFor="consent" className="text-[11px] text-zinc-500 leading-tight">I consent to this conversation being processed by AI to generate project requirements. Data is securely transmitted and processed.</label>
+              </div>
+
+              <button type="submit" disabled={!formData.consent} className="w-full bg-white text-black font-medium py-3.5 rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-50 mt-2">
+                Connect to Consultant
+              </button>
+            </form>
+          </motion.div>
+        )}
+
+        {/* PHASE 3: ACTIVE CALL (MINIMALIST) */}
+        {phase === 'call' && (
+          <motion.div key="call" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full flex flex-col items-center text-center">
+            
+            <div className="relative flex items-center justify-center w-48 h-48 mb-12">
+               {callStatus === 'active' && (
+                 <>
+                   <div className="absolute inset-0 rounded-full border border-white opacity-20 animate-ping" style={{ animationDuration: '2s' }}></div>
+                   <div className="absolute inset-4 rounded-full border border-white opacity-40 animate-ping" style={{ animationDuration: '2.5s' }}></div>
+                 </>
+               )}
+               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(255,255,255,0.2)]">
+                 <Mic size={32} className="text-black" />
+               </div>
+            </div>
+
+            <h2 className="text-2xl font-semibold mb-2">{workspace.agent_name || 'Business Consultant'}</h2>
+            <p className="text-sm text-zinc-400 mb-12 h-6">
+              {callStatus === 'connecting' ? 'Establishing secure connection...' : 'Listening... Speak naturally.'}
+            </p>
+
+            <div className="flex items-center gap-6">
+              <button onClick={() => { if(bolnaAgent){ isMuted ? bolnaAgent.unmute() : bolnaAgent.mute(); setIsMuted(!isMuted); } }} className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${isMuted ? 'bg-zinc-200 text-black' : 'bg-zinc-900 border border-zinc-800 text-white hover:bg-zinc-800'}`}>
+                {isMuted ? <MicOff size={24}/> : <Mic size={24}/>}
+              </button>
+              <button onClick={endCall} className="w-14 h-14 rounded-full flex items-center justify-center bg-white text-black hover:bg-zinc-200 transition-colors">
+                <PhoneOff size={24}/>
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* PHASE 4: SUCCESS */}
+        {phase === 'success' && (
+          <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full text-center p-8 bg-[#0A0A0A] border border-zinc-900 rounded-3xl">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-6 text-black">
+              <CheckCircle2 size={32} />
+            </div>
+            <h2 className="text-2xl font-semibold mb-3 tracking-tight">Conversation Received</h2>
+            <p className="text-sm text-zinc-400 leading-relaxed mb-6">Thank you for your time, {formData.fullName.split(' ')[0]}. The engineering team at {workspace.name} is reviewing your context to draft your technical blueprint. You can now close this tab.</p>
+          </motion.div>
+        )}
+
+      </AnimatePresence>
     </div>
   );
 }
