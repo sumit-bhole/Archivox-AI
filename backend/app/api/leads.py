@@ -1,57 +1,84 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-import httpx
-import logging
+from supabase import create_client, Client
 import os
-from app.services.ai_pipeline import generate_and_save_prd
+import logging
+from dotenv import load_dotenv
+
+# 1. Load the environment variables BEFORE doing anything else
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-class LeadPayload(BaseModel):
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_SERVICE_KEY") # Service role required for backend security
+
+if not supabase_url or not supabase_key:
+    raise ValueError("Missing Supabase credentials in .env file")
+
+supabase: Client = create_client(supabase_url, supabase_key)
+
+class CallSubmitRequest(BaseModel):
+    project_id: Optional[str] = None
     agency_id: str
     client_name: str
-    client_email: Optional[str] = None
-    company_name: Optional[str] = None
+    client_email: str
+    client_phone: str
+    company_name: str
+    project_name: str 
     project_summary: str
-    core_features: str 
-    bolna_execution_id: Optional[str] = None
+    bolna_execution_id: str
+    call_duration: int
+    call_status: str
 
-# THIS MUST BE /submit
 @router.post("/submit")
-async def submit_lead(payload: LeadPayload, background_tasks: BackgroundTasks):
+async def submit_call_data(req: CallSubmitRequest):
     try:
-        bolna_api_key = os.getenv("BOLNA_API_KEY")
-        transcript_text = "No transcript found."
-
-        if payload.bolna_execution_id and bolna_api_key:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"https://api.bolna.ai/executions/{payload.bolna_execution_id}",
-                    headers={"Authorization": f"Bearer {bolna_api_key}"},
-                    timeout=10.0
-                )
-                if response.status_code == 200:
-                    execution_data = response.json()
-                    transcript_text = execution_data.get("transcript", "Empty recording.")
-                else:
-                    logger.warning(f"Failed to fetch transcript for {payload.bolna_execution_id}")
-
-        structured_context = f"""
-        [CLIENT META DATA]
-        Name: {payload.client_name}
-        Business: {payload.company_name}
-        Summary: {payload.project_summary}
-
-        [RAW BOLNA VOICE TRANSCRIPT]
-        {transcript_text}
-        """
+        # 1. Project Resolution (Create if new, fetch if existing)
+        actual_project_id = req.project_id
         
-        background_tasks.add_task(generate_and_save_prd, payload.agency_id, structured_context)
+        if not actual_project_id:
+            # Client selected "New Project", create it safely
+            project_res = supabase.table("leads_prds").insert({
+                "agency_id": req.agency_id,
+                "client_email": req.client_email,
+                "client_name": req.client_name,
+                "company_name": req.company_name,
+                "project_name": req.project_name, 
+                "project_summary": req.project_summary,
+                "status": "pending"
+            }).execute()
+            
+            if not project_res.data:
+                raise HTTPException(status_code=500, detail="Failed to create new project in database.")
+            actual_project_id = project_res.data[0]['id']
+            
+        else:
+            # Update last_activity for existing project so it jumps to the top of the CRM list
+            supabase.table("leads_prds").update({
+                "last_activity_date": "now()"
+            }).eq("id", actual_project_id).execute()
+
+        # 2. Persist the Call Record INDEPENDENTLY of the AI PRD generation
+        call_res = supabase.table("project_calls").insert({
+            "project_id": actual_project_id,
+            "bolna_execution_id": req.bolna_execution_id,
+            "status": req.call_status,
+            "duration_seconds": req.call_duration,
+            "generation_status": "pending" # Ready for the Bolna webhook to process the transcript
+        }).execute()
         
-        return {"status": "success", "message": "Voice project received and PRD pipeline triggered."}
+        if not call_res.data:
+            raise HTTPException(status_code=500, detail="Failed to log call execution.")
+
+        return {
+            "status": "success", 
+            "project_id": actual_project_id, 
+            "call_id": call_res.data[0]['id']
+        }
         
     except Exception as e:
-        logger.error(f"Error submitting lead: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        logger.error(f"Call submission failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

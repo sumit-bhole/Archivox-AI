@@ -8,14 +8,12 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   
-  // 1. Restore the Theme State
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') !== 'light');
   const profileRef = useRef();
   
   const location = useLocation();
   const navigate = useNavigate();
 
-  // 2. Reactively apply theme to the document
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
@@ -60,28 +58,21 @@ export default function DashboardLayout() {
     { name: 'Intake Links', path: '/dashboard/links', icon: LinkIcon },
     { name: 'Leads & Projects', path: '/dashboard/leads', icon: Briefcase },
     { name: 'Blueprints', path: '/dashboard/blueprints', icon: FileText },
-    { name: 'Activity', path: '/dashboard/activity', icon: Activity },
   ];
 
-  if (!workspace) return <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black text-zinc-500">Loading...</div>;
+  if (!workspace) return <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-[#0A0A0A] text-zinc-500">Loading...</div>;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-black font-sans text-zinc-900 dark:text-white selection:bg-zinc-200 dark:selection:bg-zinc-800">
+    <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-[#000000] font-sans text-zinc-900 dark:text-white selection:bg-zinc-200 dark:selection:bg-zinc-800">
       
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-zinc-900/80 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-[#0A0A0A] border-r border-zinc-200 dark:border-zinc-900 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center px-6 border-b border-zinc-200 dark:border-zinc-900 justify-between">
           <Link to="/dashboard" className="flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="2" width="9" height="9" className="fill-zinc-900 dark:fill-white" rx="2" />
-              <rect x="13" y="2" width="9" height="20" className="fill-zinc-400" rx="2" />
-              <rect x="2" y="13" width="9" height="9" className="fill-zinc-300 dark:fill-zinc-700" rx="2" />
-            </svg>
+            <img src="/archivox.svg" alt="Archivox Logo" className="w-6 h-6" />
             <span className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white">Archivox</span>
           </Link>
           <button className="md:hidden text-zinc-500 dark:text-zinc-400" onClick={() => setSidebarOpen(false)}><X size={20}/></button>
@@ -102,22 +93,17 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        
-        <header className="h-16 flex items-center justify-between px-6 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 z-30">
+        <header className="h-16 flex items-center justify-between px-6 bg-white/80 dark:bg-[#0A0A0A]/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 z-30">
           <div className="flex items-center">
              <button className="md:hidden text-zinc-500 dark:text-zinc-400 mr-4" onClick={() => setSidebarOpen(true)}><Menu size={20}/></button>
           </div>
           
           <div className="flex items-center gap-4 relative" ref={profileRef}>
-            
-            {/* Theme Toggle Button */}
             <button onClick={() => setIsDark(!isDark)} className="p-2 rounded-md text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900 transition-colors">
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Profile Avatar */}
             <button onClick={() => setProfileOpen(!profileOpen)} className="w-8 h-8 rounded-full bg-zinc-900 text-white dark:bg-white dark:text-black border border-zinc-200 dark:border-zinc-800 flex items-center justify-center font-semibold text-xs transition hover:opacity-90">
               {workspace.name.charAt(0).toUpperCase()}
             </button>

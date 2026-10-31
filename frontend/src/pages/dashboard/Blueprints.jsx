@@ -1,35 +1,86 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabase';
 import { useOutletContext } from 'react-router-dom';
-import { FileText, Code, Database, Layout, Clock, ArrowLeft, Download, CheckCircle2 } from 'lucide-react';
+import { FileText, Code, Database, Layout, Clock, ArrowLeft, Download, CheckCircle2, Loader2 } from 'lucide-react';
 
 export default function Blueprints() {
   const { workspace } = useOutletContext();
   const [blueprints, setBlueprints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState(null); 
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     const fetchBlueprints = async () => {
       if (!workspace) return;
-
       const { data, error } = await supabase
-  .from('leads_prds')
-  .select('*')
-  .eq('agency_id', workspace.id) // ✅ Matches the actual DB column name
-  .order('created_at', { ascending: false });
+        .from('leads_prds')
+        .select('*')
+        .eq('agency_id', workspace.id) 
+        .order('created_at', { ascending: false });
 
       if (!error && data) {
         setBlueprints(data);
       }
       setLoading(false);
     };
-
     fetchBlueprints();
   }, [workspace]);
 
+  // Handle Mark as Approved
+  const handleApprove = async () => {
+    if (!selectedDoc) return;
+    setApproving(true);
+    
+    // Attempt to update status in Supabase (Assumes a 'status' column exists, if not it just updates local state)
+    await supabase.from('leads_prds').update({ status: 'approved' }).eq('id', selectedDoc.id);
+    
+    // Update local state instantly
+    const updatedDoc = { ...selectedDoc, status: 'approved' };
+    setSelectedDoc(updatedDoc);
+    setBlueprints(blueprints.map(b => b.id === updatedDoc.id ? updatedDoc : b));
+    
+    setApproving(false);
+    alert('Blueprint marked as Approved!');
+  };
+
+  // Handle Export to PDF (Creates a temporary print window)
+  const handleExportPDF = () => {
+    const printContent = document.getElementById('prd-print-area').innerHTML;
+    const printWindow = window.open('', '', 'width=900,height=900');
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${selectedDoc.client_name} - PRD Blueprint</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .page-break { page-break-before: always; }
+            }
+          </style>
+        </head>
+        <body class="p-10 font-sans bg-white text-black">
+          ${printContent}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    
+    // Wait for tailwind to load in the new window, then trigger print dialog
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 1000);
+  };
+
   // --- DETAIL VIEW (The actual PRD Document) ---
   if (selectedDoc) {
+    const isApproved = selectedDoc.status === 'approved';
+
     return (
       <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
         
@@ -42,17 +93,25 @@ export default function Blueprints() {
             <ArrowLeft size={20} /> Back to Blueprints
           </button>
           <div className="flex gap-3">
-            <button className="flex items-center gap-2 px-4 py-2 bg-[#FFFFFF] dark:bg-[#151B24] border border-[#E2E8F0] dark:border-[#252D3A] rounded-lg text-sm font-medium hover:bg-[#F8FAFC] dark:hover:bg-[#0D1117] transition-colors">
+            <button 
+              onClick={handleExportPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-[#FFFFFF] dark:bg-[#151B24] border border-[#E2E8F0] dark:border-[#252D3A] rounded-lg text-sm font-medium hover:bg-[#F8FAFC] dark:hover:bg-[#0D1117] transition-colors"
+            >
               <Download size={16} /> Export PDF
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-[#111827] dark:bg-[#F3F5F9] text-[#FFFFFF] dark:text-[#111827] rounded-lg text-sm font-medium transition-colors">
-              <CheckCircle2 size={16} /> Mark as Approved
+            <button 
+              onClick={handleApprove}
+              disabled={isApproved || approving}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isApproved ? 'bg-emerald-500 text-white cursor-default' : 'bg-[#111827] dark:bg-[#F3F5F9] text-[#FFFFFF] dark:text-[#111827] hover:opacity-90'}`}
+            >
+              {approving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} 
+              {isApproved ? 'Approved' : 'Mark as Approved'}
             </button>
           </div>
         </div>
 
-        {/* The PRD Document */}
-        <div className="bg-[#FFFFFF] dark:bg-[#151B24] border border-[#E2E8F0] dark:border-[#252D3A] rounded-3xl shadow-sm overflow-hidden">
+        {/* The PRD Document (Wrapper id is used for the PDF exporter) */}
+        <div id="prd-print-area" className="bg-[#FFFFFF] dark:bg-[#151B24] border border-[#E2E8F0] dark:border-[#252D3A] rounded-3xl shadow-sm overflow-hidden text-left">
           
           {/* Doc Header */}
           <div className="p-8 md:p-12 border-b border-[#E2E8F0] dark:border-[#252D3A] bg-[#F8FAFC]/50 dark:bg-[#0D1117]/50">
@@ -77,19 +136,19 @@ export default function Blueprints() {
                 <div className="p-5 rounded-2xl bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#252D3A]">
                   <p className="text-sm text-[#64748B] dark:text-[#9AA6B8] mb-1 flex items-center gap-2"><Layout size={16}/> Frontend</p>
                   <p className="font-mono font-semibold text-[#111827] dark:text-[#F3F5F9]">
-                    {selectedDoc.recommended_tech_stack?.frontend || 'React / Vite'}
+                    {selectedDoc.recommended_tech_stack?.frontend || 'React / Next.js'}
                   </p>
                 </div>
                 <div className="p-5 rounded-2xl bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#252D3A]">
                   <p className="text-sm text-[#64748B] dark:text-[#9AA6B8] mb-1 flex items-center gap-2"><Code size={16}/> Backend</p>
                   <p className="font-mono font-semibold text-[#111827] dark:text-[#F3F5F9]">
-                    {selectedDoc.recommended_tech_stack?.backend || 'FastAPI (Python)'}
+                    {selectedDoc.recommended_tech_stack?.backend || 'FastAPI / Node.js'}
                   </p>
                 </div>
                 <div className="p-5 rounded-2xl bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#252D3A]">
                   <p className="text-sm text-[#64748B] dark:text-[#9AA6B8] mb-1 flex items-center gap-2"><Database size={16}/> Database</p>
                   <p className="font-mono font-semibold text-[#111827] dark:text-[#F3F5F9]">
-                    {selectedDoc.recommended_tech_stack?.database || 'PostgreSQL (Supabase)'}
+                    {selectedDoc.recommended_tech_stack?.database || 'PostgreSQL'}
                   </p>
                 </div>
               </div>
@@ -106,7 +165,7 @@ export default function Blueprints() {
                     {selectedDoc.core_features}
                   </div>
                 ) : (
-                  <ul className="space-y-4">
+                  <ul className="space-y-4 list-none pl-0">
                     {selectedDoc.core_features?.map((feature, idx) => (
                       <li key={idx} className="p-6 bg-[#F8FAFC] dark:bg-[#0D1117] rounded-2xl border border-[#E2E8F0] dark:border-[#252D3A]">
                         <h4 className="text-lg font-bold m-0 text-[#111827] dark:text-[#F3F5F9]">{feature.title || 'Feature'}</h4>
@@ -154,8 +213,8 @@ export default function Blueprints() {
                 <div className="p-3 bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#252D3A] text-[#111827] dark:text-[#F3F5F9] rounded-xl group-hover:scale-105 transition-transform">
                   <FileText size={24} />
                 </div>
-                <span className="text-[10px] font-semibold text-[#64748B] dark:text-[#9AA6B8] bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#252D3A] px-2 py-1 rounded">
-                  v1.0
+                <span className={`text-[10px] font-semibold px-2 py-1 rounded border ${doc.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800' : 'text-[#64748B] dark:text-[#9AA6B8] bg-[#F8FAFC] dark:bg-[#0D1117] border-[#E2E8F0] dark:border-[#252D3A]'}`}>
+                  {doc.status === 'approved' ? 'APPROVED' : 'v1.0'}
                 </span>
               </div>
               
