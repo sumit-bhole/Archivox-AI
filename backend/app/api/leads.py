@@ -61,14 +61,14 @@ async def submit_call_data(req: CallSubmitRequest):
                 "last_activity_date": "now()"
             }).eq("id", actual_project_id).execute()
 
-        # 2. Persist the Call Record INDEPENDENTLY of the AI PRD generation
-        call_res = supabase.table("project_calls").insert({
+       # 2. Persist the Call Record safely using UPSERT to prevent double-submission crashes
+        call_res = supabase.table("project_calls").upsert({
             "project_id": actual_project_id,
             "bolna_execution_id": req.bolna_execution_id,
             "status": req.call_status,
             "duration_seconds": req.call_duration,
-            "generation_status": "pending" # Ready for the Bolna webhook to process the transcript
-        }).execute()
+            "generation_status": "pending" 
+        }, on_conflict="bolna_execution_id").execute() # <--- This prevents the 500 error!
         
         if not call_res.data:
             raise HTTPException(status_code=500, detail="Failed to log call execution.")
