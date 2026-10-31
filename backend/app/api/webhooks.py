@@ -27,7 +27,7 @@ genai.configure(api_key=gemini_api_key)
 async def generate_prd_blueprint(call_id: str, project_id: str, transcript: str):
     """
     Background Task: Uses Gemini to merge the new transcript with existing requirements,
-    outputs strict JSON, and updates the database.
+    outputs strict JSON for all dashboard tabs, and updates the database.
     """
     try:
         supabase.table("project_calls").update({"generation_status": "processing"}).eq("id", call_id).execute()
@@ -37,33 +37,35 @@ async def generate_prd_blueprint(call_id: str, project_id: str, transcript: str)
         current_features = proj_res.data[0].get("core_features", [])
         project_summary = proj_res.data[0].get("project_summary", "")
 
-        # 2. Gemini Prompt Design
+        # 2. Gemini Prompt Design (Includes Tech Stack, Open Qs, Actions)
         prompt = f"""
-        You are an expert Software Architect. Review the following call transcript and integrate any new requirements, changes, or features into the existing project blueprint.
+        You are an expert Software Architect. Review the following call transcript and integrate any new requirements into the project blueprint.
 
         Project Summary: {project_summary}
-        Current Blueprint (JSON format): {current_features}
+        Current Blueprint: {current_features}
 
         NEW CALL TRANSCRIPT:
         {transcript}
 
-        Analyze the transcript and return ONLY a raw JSON object with the following strict structure. Do not include markdown formatting or backticks.
+        Return ONLY a raw JSON object with this exact structure:
         {{
             "updated_master_requirements": [
-                {{
-                    "title": "Feature Name",
-                    "description": "Clear technical or business description.",
-                    "user_story": "As a [user], I want to [action] so that [benefit]."
-                }}
+                {{ "title": "Feature Name", "description": "Details", "user_story": "As a user..." }}
             ],
             "changelog": [
-                {{
-                    "type": "added", 
-                    "desc": "Client requested X feature.", 
-                    "old": "None", 
-                    "new": "Feature X"
-                }}
-            ]
+                {{ "type": "added", "desc": "Added X", "old": "None", "new": "X" }}
+            ],
+            "tech_stack": [
+                {{ "category": "Frontend", "technology": "React", "reason": "Good for dynamic UIs" }}
+            ],
+            "open_questions": [
+                "What is the expected monthly active user count?",
+                "Which specific payment gateway do they prefer?"
+            ],
+            "action_items": {{
+                "client": ["Provide API keys for legacy system", "Confirm brand colors"],
+                "agency": ["Draft initial wireframes", "Prepare cost estimate"]
+            }}
         }}
         Note: The 'type' in changelog must be exactly one of: 'added', 'modified', 'removed', 'clarified', 'decision'.
         """
@@ -78,9 +80,12 @@ async def generate_prd_blueprint(call_id: str, project_id: str, transcript: str)
         # 4. Parse the output
         ai_output = json.loads(response.text)
 
-        # 5. Save the new master PRD back to the project
+        # 5. Save the new master PRD and dashboard fields back to the project
         supabase.table("leads_prds").update({
             "core_features": ai_output.get("updated_master_requirements", []),
+            "tech_stack": ai_output.get("tech_stack", []),
+            "open_questions": ai_output.get("open_questions", []),
+            "action_items": ai_output.get("action_items", {"client": [], "agency": []}),
             "last_activity_date": "now()"
         }).eq("id", project_id).execute()
 
@@ -146,6 +151,17 @@ async def bolna_webhook(request: Request, background_tasks: BackgroundTasks):
                     project_id=call_data["project_id"], 
                     transcript=transcript
                 )
+            else:
+                # RACE CONDITION FIX: The webhook arrived before leads.py finished!
+                logger.warning(f"Webhook arrived before frontend submission for {execution_id}. Upserting holding record.")
+                supabase.table("project_calls").upsert({
+                    "bolna_execution_id": execution_id,
+                    "status": "completed",
+                    "transcript": transcript,
+                    "ended_at": "now()",
+                    "generation_status": "pending"
+                }, on_conflict="bolna_execution_id").execute()
+                # The user can click "Retry AI Gen" in the dashboard once leads.py links the project!
 
         return {"status": "received"}
 
