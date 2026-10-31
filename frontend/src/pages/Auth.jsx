@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
-import { Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Mail, Eye, EyeOff, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Auth() {
@@ -16,7 +16,7 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [checkEmail, setCheckEmail] = useState(false); // For Supabase email verification
+  const [checkEmail, setCheckEmail] = useState(false); 
   
   const navigate = useNavigate();
 
@@ -24,6 +24,21 @@ export default function Auth() {
   useEffect(() => {
     document.documentElement.classList.add('dark');
   }, []);
+
+  // Bulletproof routing: Wait for Supabase to broadcast the session
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        if (!isLogin) {
+          navigate('/onboarding');
+        } else {
+          navigate('/dashboard');
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate, isLogin]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,7 +52,6 @@ export default function Auth() {
           password: formData.password,
         });
         if (signInError) throw signInError;
-        navigate('/dashboard'); 
       } else {
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: formData.email,
@@ -49,8 +63,6 @@ export default function Auth() {
         // If Supabase requires email confirmation, session will be null
         if (!data.session) {
           setCheckEmail(true);
-        } else {
-          navigate('/onboarding');
         }
       }
     } catch (err) {
@@ -73,11 +85,7 @@ export default function Auth() {
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-zinc-800/20 via-transparent to-transparent opacity-50"></div>
         
         <div className="relative z-10 flex items-center gap-3">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="2" width="9" height="9" className="fill-white" rx="2" />
-            <rect x="13" y="2" width="9" height="20" className="fill-zinc-400" rx="2" />
-            <rect x="2" y="13" width="9" height="9" className="fill-zinc-700" rx="2" />
-          </svg>
+          <img src="/archivox.svg" alt="Archivox Logo" className="h-9 w-9" />
           <span className="text-xl font-semibold tracking-tight">Archivox</span>
         </div>
 
@@ -104,11 +112,7 @@ export default function Auth() {
              <ArrowLeft size={20} />
            </button>
            <div className="flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="2" width="9" height="9" className="fill-white" rx="2" />
-              <rect x="13" y="2" width="9" height="20" className="fill-zinc-400" rx="2" />
-              <rect x="2" y="13" width="9" height="9" className="fill-zinc-700" rx="2" />
-            </svg>
+             <img src="/archivox.svg" alt="Archivox Logo" className="h-8 w-8" />
           </div>
         </div>
 

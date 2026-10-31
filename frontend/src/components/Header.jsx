@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, Menu, Moon, Sun, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -10,17 +9,24 @@ const links = [
 ];
 
 export default function Header() {
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem('theme') !== 'light'
-  );
+  // Default to true (dark) unless explicitly set to 'light'
+  const [isDark, setIsDark] = useState(() => {
+    return localStorage.getItem('theme') === 'light' ? false : true;
+  });
+  
   const [isOpen, setIsOpen] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
   }, [isDark]);
 
   useEffect(() => {
@@ -46,7 +52,6 @@ export default function Header() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Replace your existing goToAuth with these two functions:
   const goToSignIn = () => {
     setIsOpen(false);
     navigate('/auth?mode=signin');
@@ -97,17 +102,17 @@ export default function Header() {
           </button>
 
           <button
-    onClick={goToSignIn}
-    className="px-3 py-2 text-sm font-semibold text-[#34332F] transition hover:text-indigo-600 dark:text-[#F3F5F9] dark:hover:text-indigo-300"
-  >
-    Sign in
-  </button>
-  <button
-    onClick={goToSignUp}
-    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 dark:bg-indigo-400 dark:text-[#111827] dark:hover:bg-indigo-300"
-  >
-    Get started <ArrowUpRight size={16} />
-  </button>
+            onClick={goToSignIn}
+            className="px-3 py-2 text-sm font-semibold text-[#34332F] transition hover:text-indigo-600 dark:text-[#F3F5F9] dark:hover:text-indigo-300"
+          >
+            Sign in
+          </button>
+          <button
+            onClick={goToSignUp}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 dark:bg-indigo-400 dark:text-[#111827] dark:hover:bg-indigo-300"
+          >
+            Get started <ArrowUpRight size={16} />
+          </button>
         </div>
 
         <div className="flex items-center gap-1 md:hidden">
@@ -145,17 +150,17 @@ export default function Header() {
 
             <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[#E8E4DC] pt-4 dark:border-[#252D3A]">
               <button
-    onClick={goToSignIn}
-    className="rounded-lg border border-[#DEDAD1] px-4 py-3 text-sm font-semibold dark:border-[#252D3A]"
-  >
-    Sign in
-  </button>
-  <button
-    onClick={goToSignUp}
-    className="rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white dark:bg-indigo-400 dark:text-[#111827]"
-  >
-    Get started
-  </button>
+                onClick={goToSignIn}
+                className="rounded-lg border border-[#DEDAD1] px-4 py-3 text-sm font-semibold dark:border-[#252D3A]"
+              >
+                Sign in
+              </button>
+              <button
+                onClick={goToSignUp}
+                className="rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white dark:bg-indigo-400 dark:text-[#111827]"
+              >
+                Get started
+              </button>
             </div>
           </nav>
         </div>

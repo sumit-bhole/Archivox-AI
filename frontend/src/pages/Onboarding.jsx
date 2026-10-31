@@ -32,11 +32,12 @@ export default function Onboarding() {
   useEffect(() => {
     // Ensure the user is actually authenticated before they can onboard
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // Changed to getSession for better stability
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         navigate('/auth');
       } else {
-        setUserAuth(user);
+        setUserAuth(session.user);
       }
     };
     checkAuth();

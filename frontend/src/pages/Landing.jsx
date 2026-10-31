@@ -17,8 +17,8 @@ import {
   Workflow,
   Zap,
 } from 'lucide-react';
+import Header from '../components/Header';
 import Footer from '../components/Footer';
-
 
 const problems = [
   {
@@ -291,6 +291,9 @@ export default function Landing() {
 
   return (
     <main className="relative isolate min-h-screen overflow-x-clip bg-[#F7F5F0] font-sans text-[#292821] selection:bg-indigo-200 selection:text-indigo-950 dark:bg-[#0D1117] dark:text-slate-100 dark:selection:bg-indigo-400/30 dark:selection:text-white">
+      {/* Header Added Here */}
+      <Header />
+      
       {/* Hero */}
       <CursorGlow />
       <section className="relative mx-auto grid min-h-0 max-w-7xl items-center gap-8 px-4 pb-14 pt-28 sm:gap-12 sm:px-6 sm:pb-20 sm:pt-32 lg:min-h-[790px] lg:grid-cols-[0.95fr_1.05fr] lg:gap-10 lg:pb-24 lg:pt-36">
@@ -314,12 +317,12 @@ export default function Landing() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <button
-  onClick={goToSignUp}
-  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600..."
->
-  Create your intake link
-  <ArrowRight size={17} />
-</button>
+              onClick={goToSignUp}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+            >
+              Create your intake link
+              <ArrowRight size={17} />
+            </button>
 
             <button
               onClick={() => scrollTo('demo')}
@@ -466,11 +469,11 @@ export default function Landing() {
             </ul>
 
             <button
-  onClick={goToSignUp}
-  className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-indigo-600..."
->
-  Try Archivox <ArrowRight size={16} />
-</button>
+              onClick={goToSignUp}
+              className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 transition hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+            >
+              Try Archivox <ArrowRight size={16} />
+            </button>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-[#F8FAFC] p-4 shadow-xl shadow-slate-900/[0.04] sm:p-6 dark:border-[#2A3444] dark:bg-[#0D1117] dark:shadow-black/20">
@@ -605,15 +608,14 @@ export default function Landing() {
               discovery and reviewable requirements.
             </p>
             <button
-  onClick={goToSignUp}
-  className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white..."
->
-  Get started <ArrowUpRight size={17} />
-</button>
+              onClick={goToSignUp}
+              className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:bg-[#0D1117] dark:text-white dark:hover:bg-[#151B24]"
+            >
+              Get started <ArrowUpRight size={17} />
+            </button>
           </div>
         </div>
       </section>
-
       
       <Footer/>
     </main>
